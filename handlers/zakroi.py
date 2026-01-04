@@ -1,10 +1,13 @@
+import os
+
 from aiogram import types
 from aiogram.fsm.context import FSMContext
 
 from db import db
-from keyboards import get_cancel_keyboard
-from service import user_sessions, PartyService
+from keyboards import get_cancel_keyboard, get_main_menu_keyboard
+from service import  user_sessions
 from states import ZakroiStates
+from config import ZAKROISHCHIK_ID
 
 
 async def zakroi_start(call: types.CallbackQuery, state: FSMContext):
@@ -16,6 +19,39 @@ async def zakroi_start(call: types.CallbackQuery, state: FSMContext):
     )
     await call.answer()
 
+
+async def auto_register_zakroishchik(bot):
+    """Автоматически регистрирует закройщика при запуске бота"""
+    try:
+        # Проверяем, есть ли уже закройщик в БД
+        existing_user = await db.get_user(ZAKROISHCHIK_ID)
+
+        if not existing_user:
+            # Регистрируем закройщика
+            await db.add_user(
+                tg_id=ZAKROISHCHIK_ID,
+                name="Закройщик",
+                job="Закрой",
+                machine_number=None
+            )
+        else:
+            print(f"✅ Закройщик уже в базе: {existing_user['name']}")
+
+    except Exception as e:
+        print(f"❌ Ошибка при регистрации закройщика: {e}")
+
+
+async def zakroishchik_start(message: types.Message, state: FSMContext):
+    """Старт для закройщика"""
+    if message.from_user.id != ZAKROISHCHIK_ID:
+        await message.answer("У вас нет доступа к этой функции")
+        return
+
+    await message.answer(
+        "👋 Добро пожаловать, Закройщик!\n"
+        "Вы можете управлять партиями и материалами.",
+        reply_markup=get_main_menu_keyboard("Закрой")
+    )
 
 async def zakroi_party_handler(message: types.Message, state: FSMContext):
     batch_number = message.text.strip()
@@ -37,15 +73,55 @@ async def zakroi_party_handler(message: types.Message, state: FSMContext):
 
 async def zakroi_color_handler(message: types.Message, state: FSMContext):
     color = message.text.strip()
-    await state.update_data(color=color)
-    await state.set_state(ZakroiStates.waiting_for_quantity_line)
+    data = await state.get_data()
 
-    await message.answer(
-        f"Цвет: {color}\n"
-        "Введите количество линий:",
-        reply_markup=get_cancel_keyboard()
-    )
+    if data.get('edit_mode'):
+        # Режим редактирования
+        material_id = data.get('material_id')
 
+        # Обновляем цвет в БД
+        async with db.pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE materials SET color = $1 WHERE id = $2",
+                color, material_id
+            )
+
+        party = await db.get_party_by_id(data['party_id'])
+
+        await message.answer(
+            f"✅ Цвет изменен!\n"
+            f"Старый цвет: {data.get('current_color', 'неизвестно')}\n"
+            f"Новый цвет: {color}\n"
+            f"Партия: №{party['batch_number']}"
+        )
+
+        # Возвращаем к управлению цветами
+        from handlers.material_management import manage_colors_callback
+
+        # Создаем новый callback
+        class FakeCallback:
+            def __init__(self, message, party_id):
+                self.message = message
+                self.from_user = message.from_user
+                self.data = f"manage_colors_{party_id}"
+
+        fake_call = FakeCallback(message, data['party_id'])
+
+        # Вызываем через create_task чтобы избежать проблем с answer
+        import asyncio
+        asyncio.create_task(manage_colors_callback(fake_call))
+
+        await state.clear()
+    else:
+        # Обычный режим добавления
+        await state.update_data(color=color)
+        await state.set_state(ZakroiStates.waiting_for_quantity_line)
+
+        await message.answer(
+            f"Цвет: {color}\n"
+            "Введите количество линий:",
+            reply_markup=get_cancel_keyboard()
+        )
 
 async def zakroi_quantity_handler(message: types.Message, state: FSMContext):
     try:
@@ -79,14 +155,14 @@ async def zakroi_quantity_handler(message: types.Message, state: FSMContext):
             party = await db.get_party_by_id(data['party_id'])
 
             if party:
-                info = await PartyService.format_party_info(party['id'], user_job)
+                from service import party_service
+                info = await party_service.format_party_info(party['id'], user_job)
 
-                # Проверяем пришли ли мы из callback (добавление из просмотра партии)
                 from_callback = data.get('from_callback', False)
 
                 if from_callback:
-                    # Показываем обновленную информацию о партии с кнопкой "добавить еще"
-                    keyboard = await PartyService.get_party_keyboard(
+                    # УБЕРИТЕ await - метод синхронный!
+                    keyboard = party_service.get_party_keyboard(  # БЕЗ await!
                         party['id'],
                         party['batch_number'],
                         user_job,
@@ -102,7 +178,6 @@ async def zakroi_quantity_handler(message: types.Message, state: FSMContext):
                         reply_markup=keyboard
                     )
                 else:
-                    # Обычное добавление через "Новая запись"
                     await message.answer(
                         f"✅ Запись добавлена!\n"
                         f"Партия: №{data['batch_number']}\n"
@@ -111,7 +186,6 @@ async def zakroi_quantity_handler(message: types.Message, state: FSMContext):
                         f"Футболок: {tshirt_count} (автоматически рассчитано: {quantity_line} × 5)"
                     )
 
-                    # Сохраняем текущую партию для пользователя
                     if message.from_user.id not in user_sessions:
                         user_sessions[message.from_user.id] = {}
                     user_sessions[message.from_user.id]['current_party'] = data['batch_number']
@@ -190,3 +264,4 @@ async def zakroi_start_menu(message: types.Message, state: FSMContext):
         "Выберите партию для добавления материала:",
         reply_markup=keyboard
     )
+

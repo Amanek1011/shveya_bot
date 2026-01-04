@@ -1,19 +1,36 @@
 from aiogram import types
 from aiogram.fsm.context import FSMContext
 
+from config import ZAKROISHCHIK_ID
 from db import db
 from keyboards import get_jobs_keyboard, get_main_menu_keyboard, get_cancel_keyboard
 from states import RegistrationStates
 
 
 async def name_handler(message: types.Message, state: FSMContext):
-    await state.update_data(name=message.text)
-    await state.set_state(RegistrationStates.waiting_for_job)
-    await message.answer(
-        f"Приятно познакомиться, {message.text}!\n"
-        "Теперь выберите вашу должность:",
-        reply_markup=get_jobs_keyboard()
-    )
+    name = message.text.strip()
+
+    # Проверяем, является ли пользователь закройщиком
+    if message.from_user.id == ZAKROISHCHIK_ID:
+        # Автоматически регистрируем как закройщика
+        await db.add_user(message.from_user.id, name, "Закрой", None)
+        await state.clear()
+
+        await message.answer(
+            f"✅ Здравствуйте, {name}!\n"
+            "Вы зарегистрированы как Закройщик.\n"
+            "Теперь вы можете управлять партиями и материалами.",
+            reply_markup=get_main_menu_keyboard("Закрой")
+        )
+    else:
+        # Обычный пользователь - выбирает должность
+        await state.update_data(name=name)
+        await state.set_state(RegistrationStates.waiting_for_job)
+        await message.answer(
+            f"Приятно познакомиться, {name}!\n"
+            "Теперь выберите вашу должность:",
+            reply_markup=get_jobs_keyboard()
+        )
 
 
 async def job_selected(call: types.CallbackQuery, state: FSMContext):

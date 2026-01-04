@@ -220,6 +220,33 @@ class Database:
                 print(f"Ошибка при добавлении материала: {e}")
                 return False
 
+    async def delete_material(self, material_id: int):
+        """Удалить материал по ID"""
+        if not self.pool:
+            await self.create_pool()
+
+        async with self.pool.acquire() as conn:
+            try:
+                await conn.execute(
+                    "DELETE FROM materials WHERE id = $1",
+                    material_id
+                )
+                return True
+            except Exception as e:
+                print(f"❌ Ошибка при удалении материала: {e}")
+                return False
+
+    async def get_material_by_id(self, material_id: int):
+        """Получить материал по ID"""
+        if not self.pool:
+            await self.create_pool()
+
+        async with self.pool.acquire() as conn:
+            return await conn.fetchrow(
+                "SELECT * FROM materials WHERE id = $1",
+                material_id
+            )
+
     # === Методы для обновления данных по операциям ===
     async def update_fourx(self, material_id: int, four_x: str, four_x_count: int):
         """Обновить данные по 4-х оператору"""
@@ -365,6 +392,7 @@ class Database:
                     tg_id BIGINT UNIQUE NOT NULL,
                     name TEXT NOT NULL,
                     job VARCHAR(50),
+                    machine_number VARCHAR(50),
                     registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)

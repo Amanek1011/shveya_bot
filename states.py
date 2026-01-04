@@ -1,4 +1,4 @@
-
+# states.py
 from aiogram.fsm.state import State, StatesGroup
 
 class RegistrationStates(StatesGroup):
@@ -17,6 +17,8 @@ class ZakroiStates(StatesGroup):
     waiting_for_color = State()
     waiting_for_quantity_line = State()
 
+class MaterialManagementStates(StatesGroup):
+    waiting_for_confirmation = State()
 
 # Состояния для управления партиями
 class PartyManagementStates(StatesGroup):
@@ -29,6 +31,8 @@ class FourXStates(StatesGroup):
     waiting_for_color_selection = State()
     waiting_for_machine_number = State()
     waiting_for_count = State()
+
+# ДОБАВЛЯЕМ НЕДОСТАЮЩИЕ СОСТОЯНИЯ:
 
 class RaspashStates(StatesGroup):
     waiting_for_party_selection = State()
@@ -64,3 +68,9 @@ class UpakovkaStates(StatesGroup):
     waiting_for_party_selection = State()
     waiting_for_color_selection = State()
     waiting_for_count = State()
+
+class EditOperationsStates(StatesGroup):
+    waiting_for_party_selection = State()
+    waiting_for_color_selection = State()
+    waiting_for_operation = State()
+    waiting_for_new_count = State()

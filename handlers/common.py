@@ -4,8 +4,9 @@ from aiogram.fsm.context import FSMContext
 
 
 from db import db
+from handlers.edit_operations import edit_operations_start
 from keyboards import get_main_menu_keyboard, get_parties_keyboard, get_cancel_keyboard
-from service import user_sessions, PartyService, UserService
+from service import user_service,user_sessions,party_service
 import handlers.zakroi as zakroi_handlers
 import handlers.fourx as fourx_handlers
 import handlers.raspash as raspash_handlers
@@ -18,6 +19,7 @@ import handlers.upakovka as upakovka_handlers
 import handlers.user_management as user_management_handlers
 from states import ZakroiStates
 import handlers.party_management as party_management_handlers
+
 
 # ========== ОБЩИЕ КОМАНДЫ ==========
 async def start_handler(message: types.Message, state: FSMContext):
@@ -104,13 +106,12 @@ async def info_command(message: types.Message):
         await message.answer("Партия не найдена")
         return
 
-    info = await PartyService.format_party_info(party['id'])
+    info = await party_service.format_party_info(party['id'])
     await message.answer(f"📦 Текущая партия: №{current_party}\n\n{info}")
 
 
 async def party_selected_from_menu(call: types.CallbackQuery):
     """Обработка выбора партии из меню"""
-    # Проверяем что это выбор партии, а не другая callback_data
     if not call.data.startswith("party_"):
         return
 
@@ -122,13 +123,30 @@ async def party_selected_from_menu(call: types.CallbackQuery):
         await call.answer()
         return
 
-    # Сохраняем выбранную партию для пользователя
+    user = await db.get_user(call.from_user.id)
+    user_job = user['job'] if user else None
+
+    # Сохраняем выбранную партию
     if call.from_user.id not in user_sessions:
         user_sessions[call.from_user.id] = {}
     user_sessions[call.from_user.id]['current_party'] = batch_number
 
-    info = await PartyService.format_party_info(party['id'])
-    await call.message.answer(f"✅ Выбрана партия №{batch_number}\n\n{info}")
+    # Разный текст для закройщика и оператора
+    if user_service.is_zakroi_sync(user_job):
+        # Для закройщика - полная информация
+        info = await party_service.format_party_info(party['id'], user_job)
+        await call.message.answer(
+            f"✅ Выбрана партия №{batch_number}\n\n{info}",
+            reply_markup=party_service.get_party_keyboard(party['id'], batch_number, user_job)
+        )
+    else:
+        # Для оператора - упрощенный вид
+        info = await party_service.format_party_simple(party['id'], user_job)
+        await call.message.answer(
+            f"✅ Выбрана партия №{batch_number}\n\n{info}",
+            reply_markup=party_service.get_party_keyboard(party['id'], batch_number, user_job)
+        )
+
     await call.answer()
 
 
@@ -144,7 +162,7 @@ async def cancel_callback(call: types.CallbackQuery, state: FSMContext):
 async def new_record_handler(message: types.Message, state: FSMContext):
     """Обработка кнопки 'Новая запись' для закройщика"""
     user = await db.get_user(message.from_user.id)
-    if user and UserService.is_zakroi_sync(user['job']):
+    if user and user_service.is_zakroi_sync(user['job']):
         # Показываем список партий для выбора
         await zakroi_handlers.zakroi_start_menu(message, state)
     else:
@@ -312,10 +330,6 @@ async def new_party_callback(call: types.CallbackQuery, state: FSMContext):
     )
     await call.answer()
 
-async def manage_parties_handler(message: types.Message, state: FSMContext):
-    """Обработка кнопки 'Управление партиями' из меню"""
-    await party_management_handlers.party_management_menu(message, state)
-
 
 async def manage_parties_handler(message: types.Message, state: FSMContext):
     """Обработка кнопки 'Управление партиями'"""
@@ -368,38 +382,6 @@ async def check_my_data(message: types.Message):
     await message.answer(response)
 
 
-async def party_selected_from_menu(call: types.CallbackQuery):
-    """Обработка выбора партии из меню"""
-    # Проверяем что это выбор партии, а не другая callback_data
-    if not call.data.startswith("party_"):
-        return
-
-    batch_number = call.data.split("_")[1]
-    party = await db.get_party_by_number(batch_number)
-
-    if not party:
-        await call.message.answer("Партия не найдена")
-        await call.answer()
-        return
-
-    # Получаем пользователя для проверки прав
-    user = await db.get_user(call.from_user.id)
-    user_job = user['job'] if user else None
-
-    # Сохраняем выбранную партию для пользователя
-    if call.from_user.id not in user_sessions:
-        user_sessions[call.from_user.id] = {}
-    user_sessions[call.from_user.id]['current_party'] = batch_number
-
-    info = await PartyService.format_party_info(party['id'], user_job)
-    keyboard = await PartyService.get_party_keyboard(party['id'], batch_number, user_job)
-
-    await call.message.answer(
-        f"✅ Выбрана партия №{batch_number}\n\n{info}",
-        reply_markup=keyboard
-    )
-    await call.answer()
-
 
 async def back_to_parties(call: types.CallbackQuery):
     """Возврат к списку партий"""
@@ -436,7 +418,7 @@ async def add_material_callback(call: types.CallbackQuery, state: FSMContext):
 
     # Проверяем права (только закройщик)
     user = await db.get_user(call.from_user.id)
-    if not user or not UserService.is_zakroi_sync(user['job']):
+    if not user or not user_service.is_zakroi_sync(user['job']):
         await call.message.answer("Только закройщик может добавлять материалы")
         await call.answer()
         return
@@ -456,3 +438,85 @@ async def add_material_callback(call: types.CallbackQuery, state: FSMContext):
         reply_markup=get_cancel_keyboard()
     )
     await call.answer()
+
+
+async def continue_work_callback(call: types.CallbackQuery, state: FSMContext):
+    """Продолжить работу в той же партии"""
+    party_id = int(call.data.split("_")[2])
+
+    user = await db.get_user(call.from_user.id)
+    if not user:
+        await call.message.answer("Ошибка: пользователь не найден")
+        await call.answer()
+        return
+
+    # Определяем должность и запускаем соответствующую работу
+    job = user['job']
+
+    if job == '4-х':
+        await fourx_handlers.fourx_continue_work(call, state, party_id)
+    elif job == 'Распаш':
+        await raspash_handlers.raspash_continue_work(call, state, party_id)
+    elif job == 'Бейка':
+        await beika_handlers.beika_continue_work(call, state, party_id)
+    elif job == 'Строчка':
+        await strochka_handlers.strochka_continue_work(call, state, party_id)
+    elif job == 'Горло':
+        await gorlo_handlers.gorlo_continue_work(call, state, party_id)
+    elif job == 'Утюг':
+        await ytyg_handlers.ytyg_continue_work(call, state, party_id)
+    elif job == 'OTK':
+        await otk_handlers.otk_continue_work(call, state, party_id)
+    elif job == 'Упаковка':
+        await upakovka_handlers.upakovka_continue_work(call, state, party_id)
+    else:
+        await call.message.answer(f"Для должности '{job}' нет активных действий")
+        await call.answer()
+
+
+async def change_party_callback(call: types.CallbackQuery, state: FSMContext):
+    """Сменить партию"""
+    user = await db.get_user(call.from_user.id)
+    if not user:
+        await call.message.answer("Сначала пройдите регистрацию")
+        await call.answer()
+        return
+
+    parties = await db.get_all_parties()
+    if not parties:
+        await call.message.answer("Нет доступных партий")
+        await call.answer()
+        return
+
+    from keyboards import get_parties_keyboard
+    keyboard = get_parties_keyboard(parties, user['job'], with_management=False)
+
+    await call.message.edit_text(
+        "Выберите партию для работы:",
+        reply_markup=keyboard
+    )
+    await call.answer()
+
+
+async def workers_stats_command(message: types.Message):
+    """Команда для просмотра статистики работников"""
+    user = await db.get_user(message.from_user.id)
+    if not user or not user_service.is_zakroi_sync(user['job']):
+        await message.answer("Эта команда доступна только закройщикам")
+        return
+
+    from handlers.worker_stats import full_workers_stats_callback
+
+    class FakeCallback:
+        def __init__(self, message):
+            self.message = message
+            self.from_user = message.from_user
+            self.data = "full_workers_stats"
+
+    fake_call = FakeCallback(message)
+    await full_workers_stats_callback(fake_call)
+
+
+async def edit_operations_handler(message: types.Message, state: FSMContext):
+    """Обработка кнопки 'Изменить показания'"""
+    await edit_operations_start(message, state)

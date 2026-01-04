@@ -13,3 +13,6 @@ DB_PORT = os.getenv('DB_PORT')
 
 # Формируем DSN для asyncpg
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+# ID закройщика
+ZAKROISHCHIK_ID = os.getenv('ZAKROISHCHIK_ID')
