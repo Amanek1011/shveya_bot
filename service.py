@@ -1,5 +1,5 @@
 from db import db
-from keyboards import get_parties_keyboard, get_colors_keyboard, is_zakroi_sync
+from keyboards import get_parties_keyboard, get_colors_keyboard
 
 
 class UserService:
@@ -187,7 +187,7 @@ class PartyService:
         if not materials:
             return "В этой партии пока нет материалов"
 
-        result = f"📦 Партия (выберите цвет):\n\n"
+        result = f"📦 Цвета в этой партии:\n\n"
 
         # Группируем материалы по цветам (для операторов показываем только цвета)
         colors = {}
@@ -238,11 +238,6 @@ class PartyService:
             builder.button(
                 text="👥 Кто что сделал",
                 callback_data=f"view_workers_{party_id}"
-            )
-
-            builder.button(
-                text="📊 Полная статистика",
-                callback_data=f"full_stats_{party_id}"
             )
 
         else:

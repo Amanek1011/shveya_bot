@@ -1,4 +1,3 @@
-import os
 
 from aiogram import types
 from aiogram.fsm.context import FSMContext
@@ -10,14 +9,34 @@ from states import ZakroiStates
 from config import ZAKROISHCHIK_ID
 
 
-async def zakroi_start(call: types.CallbackQuery, state: FSMContext):
-    """Закройщик начинает работу"""
-    await state.set_state(ZakroiStates.waiting_for_party_number)
-    await call.message.answer(
-        "Введите номер партии (например: 26):",
-        reply_markup=get_cancel_keyboard()
+async def zakroi_start_menu(message: types.Message, state: FSMContext):
+    """Запуск работы для закройщика через меню (кнопку)"""
+    user = await db.get_user(message.from_user.id)
+    if not user or user['job'] != 'Закрой':
+        await message.answer("Только закройщик может создавать новые записи")
+        return
+
+    # Сначала проверяем есть ли партии
+    parties = await db.get_all_parties()
+
+    if not parties:
+        # Если партий нет, сразу предлагаем создать новую
+        await state.set_state(ZakroiStates.waiting_for_party_number)
+        await message.answer(
+            "Партий нет. Создайте новую партию:\n"
+            "Введите номер новой партии (например: 100):",
+            reply_markup=get_cancel_keyboard()
+        )
+        return
+
+    # Если партии есть, показываем список для выбора
+    from keyboards import get_parties_keyboard
+    keyboard = get_parties_keyboard(parties, user['job'], with_management=False)
+
+    await message.answer(
+        "Выберите партию для добавления материала:",
+        reply_markup=keyboard
     )
-    await call.answer()
 
 
 async def auto_register_zakroishchik(bot):
@@ -233,35 +252,7 @@ async def new_party_callback(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-async def zakroi_start_inline(message: types.Message, state: FSMContext):
-    """Запуск работы для закройщика через меню"""
-
-    class FakeCallback:
-        def __init__(self, message):
-            self.message = message
-            self.from_user = message.from_user
-            self.data = "zakroi"
-
-    fake_call = FakeCallback(message)
-    await zakroi_start(fake_call, state)
 
 
-async def zakroi_start_menu(message: types.Message, state: FSMContext):
-    """Запуск работы для закройщика через меню (кнопку)"""
-    # Сначала показываем список партий
-    user = await db.get_user(message.from_user.id)
-    user_job = user['job'] if user else None
 
-    parties = await db.get_all_parties()
-    if not parties:
-        await message.answer("Нет доступных партий. Создайте новую партию.")
-        return
-
-    from keyboards import get_parties_keyboard
-    keyboard = get_parties_keyboard(parties, user_job, with_management=False)
-
-    await message.answer(
-        "Выберите партию для добавления материала:",
-        reply_markup=keyboard
-    )
 

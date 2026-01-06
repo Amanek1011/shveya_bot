@@ -15,4 +15,4 @@ DB_PORT = os.getenv('DB_PORT')
 DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # ID закройщика
-ZAKROISHCHIK_ID = os.getenv('ZAKROISHCHIK_ID')
+ZAKROISHCHIK_ID = int(os.getenv('ZAKROISHCHIK_ID'))

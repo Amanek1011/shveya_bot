@@ -58,17 +58,18 @@ def is_zakroi_sync(job: str) -> bool:
 def get_jobs_keyboard():
     return InlineKeyboardMarkup(inline_keyboard=[
         [
-            InlineKeyboardButton(text='Закрой', callback_data='zakroi'),
             InlineKeyboardButton(text='4-х', callback_data='fourx'),
             InlineKeyboardButton(text='Распаш', callback_data='raspash'),
         ],
         [
             InlineKeyboardButton(text='Бейка', callback_data='beika'),
             InlineKeyboardButton(text='Строчка', callback_data='strochka'),
-            InlineKeyboardButton(text='Горло', callback_data='gorlo'),
         ],
         [
+            InlineKeyboardButton(text='Горло', callback_data='gorlo'),
             InlineKeyboardButton(text='Утюг', callback_data='ytyg'),
+        ],
+        [
             InlineKeyboardButton(text='OTK', callback_data='otk'),
             InlineKeyboardButton(text='Упаковка', callback_data='upakovka'),
         ]

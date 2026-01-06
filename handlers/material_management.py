@@ -9,9 +9,6 @@ from service import party_service, user_service
 from states import ZakroiStates, MaterialManagementStates
 
 
-class MaterialManagementStates(StatesGroup):
-    waiting_for_confirmation = State()
-
 
 async def manage_materials_callback(call: types.CallbackQuery):
     """Управление материалами партии - УПРОЩЕННОЕ"""
@@ -268,7 +265,7 @@ async def manage_colors_callback(call: types.CallbackQuery = None, party_id: int
             callback_data=f"edit_color_{material['id']}"
         )
         builder.button(
-            text=f"🗑️",
+            text=f"🗑️ {material['color']}",
             callback_data=f"delete_material_{material['id']}"
         )
 
@@ -286,8 +283,15 @@ async def manage_colors_callback(call: types.CallbackQuery = None, party_id: int
 
 
 async def edit_color_callback(call: types.CallbackQuery, state: FSMContext):
-    """Редактирование цвета материала"""
+    """Редактирование цвета материала - ТОЛЬКО для закройщика"""
     material_id = int(call.data.split("_")[2])
+
+    # Проверяем права
+    user = await db.get_user(call.from_user.id)
+    if not user or not user_service.is_zakroi_sync(user['job']):
+        await call.message.answer("Только закройщик может изменять цвета материалов")
+        await call.answer()
+        return
 
     material = await db.get_material_by_id(material_id)
     if not material:
@@ -308,19 +312,17 @@ async def edit_color_callback(call: types.CallbackQuery, state: FSMContext):
 
     try:
         await call.message.edit_text(
-            f"✏️ Изменение цвета\n\n"
+            f"✏️ Изменение цвета (только для закройщика)\n\n"
             f"Партия: №{party['batch_number']}\n"
-            f"Текущий цвет: {material['color']}\n"
-            f"ID материала: {material_id}\n\n"
+            f"Текущий цвет: {material['color']}\n\n"
             f"Введите новый цвет:",
             reply_markup=get_cancel_keyboard()
         )
     except:
         await call.message.answer(
-            f"✏️ Изменение цвета\n\n"
+            f"✏️ Изменение цвета (только для закройщика)\n\n"
             f"Партия: №{party['batch_number']}\n"
-            f"Текущий цвет: {material['color']}\n"
-            f"ID материала: {material_id}\n\n"
+            f"Текущий цвет: {material['color']}\n\n"
             f"Введите новый цвет:",
             reply_markup=get_cancel_keyboard()
         )

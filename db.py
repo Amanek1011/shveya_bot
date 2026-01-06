@@ -253,6 +253,11 @@ class Database:
         if not self.pool:
             await self.create_pool()
 
+        print(f"📝 UPDATE fourx:")
+        print(f"   material_id: {material_id}")
+        print(f"   four_x: '{four_x}'")
+        print(f"   four_x_count: {four_x_count}")
+
         async with self.pool.acquire() as conn:
             await conn.execute(
                 """
@@ -262,6 +267,12 @@ class Database:
                 """,
                 four_x, four_x_count, material_id
             )
+
+        # Проверим что обновилось
+        material = await self.get_material_by_id(material_id)
+        print(f"📝 Проверка после UPDATE:")
+        print(f"   four_x: '{material['four_x']}'")
+        print(f"   four_x_count: {material['four_x_count']}")
 
     async def update_raspash(self, material_id: int, raspash: str, raspash_count: int):
         """Обновить данные по распаш"""

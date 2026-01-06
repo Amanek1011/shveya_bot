@@ -119,13 +119,13 @@ async def view_workers_callback(call: types.CallbackQuery):
                 'material_id': material['id']
             })
 
-    text = f"👥 **Кто что сделал в партии №{party['batch_number']}:**\n\n"
+    text = f"👥 Кто что сделал в партии №{party['batch_number']}:\n\n"
 
     if not workers_stats:
         text += "Пока никто не начал работу.\n"
     else:
         for worker, jobs in sorted(workers_stats.items()):
-            text += f"**{worker}:**\n"
+            text += f"{worker}:\n"
 
             for job_name, details in jobs.items():
                 total_for_job = sum(item['count'] for item in details)
@@ -133,7 +133,7 @@ async def view_workers_callback(call: types.CallbackQuery):
 
                 # Детали по цветам
                 for item in details:
-                    text += f"      • {item['color']}: {item['count']}шт (ID: {item['material_id']})\n"
+                    text += f"      • {item['color']}: {item['count']}шт\n"
 
                 text += "\n"
             text += "\n"
@@ -149,101 +149,3 @@ async def view_workers_callback(call: types.CallbackQuery):
     await call.answer()
 
 
-async def full_workers_stats_callback(call: types.CallbackQuery):
-    """Полная статистика работников по всем партиям"""
-    user = await db.get_user(call.from_user.id)
-    if not user or not user_service.is_zakroi_sync(user['job']):
-        await call.message.answer("Эта информация доступна только закройщикам")
-        await call.answer()
-        return
-
-    # Получаем все партии
-    parties = await db.get_all_parties()
-
-    if not parties:
-        await call.message.answer("Пока нет ни одной партии")
-        await call.answer()
-        return
-
-    text = f"👥 **Статистика работников по всем партиям:**\n\n"
-
-    # Собираем статистику по всем партиям
-    all_workers_stats = {}
-
-    for party in parties:
-        materials = await db.get_materials_by_party(party['id'])
-
-        for material in materials:
-            color = material['color']
-            party_info = f"Партия №{party['batch_number']}, {color}"
-
-            # 4-х операторы
-            if material['four_x'] and material['four_x_count']:
-                worker = material['four_x']
-                if worker not in all_workers_stats:
-                    all_workers_stats[worker] = {}
-                if '4-х' not in all_workers_stats[worker]:
-                    all_workers_stats[worker]['4-х'] = []
-
-                all_workers_stats[worker]['4-х'].append({
-                    'party': party['batch_number'],
-                    'color': color,
-                    'count': material['four_x_count'],
-                    'material_id': material['id']
-                })
-
-            # Распаш
-            if material['raspash'] and material['raspash_count']:
-                worker = material['raspash']
-                if worker not in all_workers_stats:
-                    all_workers_stats[worker] = {}
-                if 'Распаш' not in all_workers_stats[worker]:
-                    all_workers_stats[worker]['Распаш'] = []
-
-                all_workers_stats[worker]['Распаш'].append({
-                    'party': party['batch_number'],
-                    'color': color,
-                    'count': material['raspash_count'],
-                    'material_id': material['id']
-                })
-
-            # ... аналогично для остальных операций ...
-
-    if not all_workers_stats:
-        text += "Пока никто не работал.\n"
-    else:
-        for worker, jobs in sorted(all_workers_stats.items()):
-            text += f"**{worker}:**\n"
-
-            total_worker = 0
-            for job_name, details in jobs.items():
-                job_total = sum(item['count'] for item in details)
-                total_worker += job_total
-                text += f"   {job_name}: {job_total}шт\n"
-
-                # Группируем по партиям
-                party_groups = {}
-                for item in details:
-                    party_key = f"Партия №{item['party']}"
-                    if party_key not in party_groups:
-                        party_groups[party_key] = []
-                    party_groups[party_key].append(item)
-
-                for party_name, party_items in party_groups.items():
-                    text += f"      {party_name}:\n"
-                    for item in party_items:
-                        text += f"         • {item['color']}: {item['count']}шт\n"
-
-                text += "\n"
-
-            text += f"   **Итого: {total_worker}шт**\n\n"
-
-    builder = InlineKeyboardBuilder()
-    builder.button(text="◀️ Назад", callback_data="back_to_parties")
-    builder.adjust(1)
-
-    try:
-        await call.message.edit_text(text, reply_markup=builder.as_markup())
-    except:
-        await call.message.answer(text, reply_markup=builder.as_markup())
-    await call.answer()

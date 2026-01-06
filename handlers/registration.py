@@ -1,37 +1,53 @@
 from aiogram import types
 from aiogram.fsm.context import FSMContext
 
-from config import ZAKROISHCHIK_ID
-from db import db
-from keyboards import get_jobs_keyboard, get_main_menu_keyboard, get_cancel_keyboard
-from states import RegistrationStates
 
+from db import db
+from keyboards import get_jobs_keyboard, get_main_menu_keyboard
+from states import RegistrationStates
+from config import ZAKROISHCHIK_ID
 
 async def name_handler(message: types.Message, state: FSMContext):
     name = message.text.strip()
 
     # Проверяем, является ли пользователь закройщиком
     if message.from_user.id == ZAKROISHCHIK_ID:
-        # Автоматически регистрируем как закройщика
-        await db.add_user(message.from_user.id, name, "Закрой", None)
-        await state.clear()
+        # Это закройщик - сразу регистрируем/обновляем
+        existing_user = await db.get_user(ZAKROISHCHIK_ID)
 
+        if not existing_user:
+            # Регистрируем как закройщика
+            await db.add_user(
+                tg_id=ZAKROISHCHIK_ID,
+                name=name,
+                job="Закрой",
+                machine_number=None
+            )
+        else:
+            # Обновляем имя если нужно
+            async with db.pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE users SET name = $1 WHERE tg_id = $2",
+                    name, ZAKROISHCHIK_ID
+                )
+
+        await state.clear()
         await message.answer(
             f"✅ Здравствуйте, {name}!\n"
             "Вы зарегистрированы как Закройщик.\n"
             "Теперь вы можете управлять партиями и материалами.",
             reply_markup=get_main_menu_keyboard("Закрой")
         )
-    else:
-        # Обычный пользователь - выбирает должность
-        await state.update_data(name=name)
-        await state.set_state(RegistrationStates.waiting_for_job)
-        await message.answer(
-            f"Приятно познакомиться, {name}!\n"
-            "Теперь выберите вашу должность:",
-            reply_markup=get_jobs_keyboard()
-        )
+        return
 
+    # Обычный пользователь - выбирает должность (без "Закрой")
+    await state.update_data(name=name)
+    await state.set_state(RegistrationStates.waiting_for_job)
+    await message.answer(
+        f"Приятно познакомиться, {name}!\n"
+        "Теперь выберите вашу должность:",
+        reply_markup=get_jobs_keyboard()  # Без кнопки Закрой
+    )
 
 async def job_selected(call: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()

@@ -39,7 +39,7 @@ async def fourx_party_selected(call: types.CallbackQuery, state: FSMContext):
     await state.set_state(FourXStates.waiting_for_color_selection)
 
     await call.message.edit_text(
-        f"Партия №{batch_number}\nВыберите цвет:",
+        f"Партия №{batch_number}\n",
         reply_markup=keyboard
     )
     await call.answer()
@@ -122,10 +122,7 @@ async def fourx_count_handler(message: types.Message, state: FSMContext):
         count = int(message.text)
         data = await state.get_data()
         user_name = await user_service.get_user_name(message.from_user.id)
-
         await db.update_fourx(data['material_id'], user_name, count)
-
-        # Упрощенное сообщение об успехе
         await message.answer(
             f"✅ Записано: {count}шт\n"
         )

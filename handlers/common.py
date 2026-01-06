@@ -4,7 +4,6 @@ from aiogram.fsm.context import FSMContext
 
 
 from db import db
-from handlers.edit_operations import edit_operations_start
 from keyboards import get_main_menu_keyboard, get_parties_keyboard, get_cancel_keyboard
 from service import user_service,user_sessions,party_service
 import handlers.zakroi as zakroi_handlers
@@ -23,6 +22,40 @@ import handlers.party_management as party_management_handlers
 
 # ========== ОБЩИЕ КОМАНДЫ ==========
 async def start_handler(message: types.Message, state: FSMContext):
+    from config import ZAKROISHCHIK_ID
+
+    # Сначала проверяем, является ли пользователь закройщиком по ID
+    if message.from_user.id == ZAKROISHCHIK_ID:
+        # Проверяем, есть ли закройщик в базе
+        user = await db.get_user(ZAKROISHCHIK_ID)
+
+        if not user:
+            # Если закройщика нет в базе, регистрируем его
+            await db.add_user(
+                tg_id=ZAKROISHCHIK_ID,
+                name="Закройщик",
+                job="Закрой",
+                machine_number=None
+            )
+            print(f"✅ Закройщик автоматически зарегистрирован")
+
+            # Получаем свежие данные пользователя
+            user = await db.get_user(ZAKROISHCHIK_ID)
+
+        # Приветствуем закройщика
+        await message.answer(
+            f"👑 Здравствуйте, {user['name']}! (Закройщик)\n"
+            "Вы можете управлять партиями и материалами.",
+            reply_markup=get_main_menu_keyboard(user['job'])
+        )
+
+        if 'current_party' not in user_sessions.get(message.from_user.id, {}):
+            user_sessions[message.from_user.id] = {'current_party': None}
+
+        await state.clear()
+        return
+
+    # Для обычных пользователей - стандартная логика
     user = await db.get_user(message.from_user.id)
 
     if user:
@@ -43,7 +76,6 @@ async def start_handler(message: types.Message, state: FSMContext):
             "Здравствуйте! Это бот для записи данных работы в швейном цеху.\n"
             "Пожалуйста, представьтесь - напишите ваше имя:"
         )
-
 
 async def show_parties_command(message: types.Message):
     """Показать все партии"""
@@ -163,8 +195,20 @@ async def new_record_handler(message: types.Message, state: FSMContext):
     """Обработка кнопки 'Новая запись' для закройщика"""
     user = await db.get_user(message.from_user.id)
     if user and user_service.is_zakroi_sync(user['job']):
-        # Показываем список партий для выбора
-        await zakroi_handlers.zakroi_start_menu(message, state)
+        # Проверяем есть ли партии
+        parties = await db.get_all_parties()
+
+        if not parties:
+            # Если партий нет, создаем новую
+            await state.set_state(ZakroiStates.waiting_for_party_number)
+            await message.answer(
+                "Партий нет. Создайте новую партию:\n"
+                "Введите номер новой партии (например: 100):",
+                reply_markup=get_cancel_keyboard()
+            )
+        else:
+            # Если партии есть, показываем список для выбора
+            await zakroi_handlers.zakroi_start_menu(message, state)
     else:
         await message.answer("Эта функция доступна только закройщикам")
 
@@ -180,21 +224,93 @@ async def start_work_handler(message: types.Message, state: FSMContext):
     print(f"🚀 Начало работы для {user['name']} ({job})")
 
     if job == '4-х':
-        await fourx_handlers.fourx_start_menu(message, state)
+        # Показываем список партий для выбора
+        parties = await db.get_all_parties()
+        if not parties:
+            await message.answer("Нет доступных партий")
+            return
+
+        from keyboards import get_parties_keyboard
+        keyboard = get_parties_keyboard(parties, user['job'], with_management=False)
+        await message.answer("Выберите партию для работы:", reply_markup=keyboard)
+
     elif job == 'Распаш':
-        await raspash_handlers.raspash_start_menu(message, state)
+        # Показываем список партий для распаш
+        parties = await db.get_all_parties()
+        if not parties:
+            await message.answer("Нет доступных партий")
+            return
+
+        from keyboards import get_parties_keyboard
+        keyboard = get_parties_keyboard(parties, user['job'], with_management=False)
+        await message.answer("Выберите партию для работы:", reply_markup=keyboard)
+
     elif job == 'Бейка':
-        await beika_handlers.beika_start_menu(message, state)
+        # Показываем список партий для бейки
+        parties = await db.get_all_parties()
+        if not parties:
+            await message.answer("Нет доступных партий")
+            return
+
+        from keyboards import get_parties_keyboard
+        keyboard = get_parties_keyboard(parties, user['job'], with_management=False)
+        await message.answer("Выберите партию для работы:", reply_markup=keyboard)
+
     elif job == 'Строчка':
-        await strochka_handlers.strochka_start_menu(message, state)
+        # Показываем список партий для строчки
+        parties = await db.get_all_parties()
+        if not parties:
+            await message.answer("Нет доступных партий")
+            return
+
+        from keyboards import get_parties_keyboard
+        keyboard = get_parties_keyboard(parties, user['job'], with_management=False)
+        await message.answer("Выберите партию для работы:", reply_markup=keyboard)
+
     elif job == 'Горло':
-        await gorlo_handlers.gorlo_start_menu(message, state)
+        # Показываем список партий для горла
+        parties = await db.get_all_parties()
+        if not parties:
+            await message.answer("Нет доступных партий")
+            return
+
+        from keyboards import get_parties_keyboard
+        keyboard = get_parties_keyboard(parties, user['job'], with_management=False)
+        await message.answer("Выберите партию для работы:", reply_markup=keyboard)
+
     elif job == 'Утюг':
-        await ytyg_handlers.ytyg_start_menu(message, state)
+        # Показываем список партий для утюга
+        parties = await db.get_all_parties()
+        if not parties:
+            await message.answer("Нет доступных партий")
+            return
+
+        from keyboards import get_parties_keyboard
+        keyboard = get_parties_keyboard(parties, user['job'], with_management=False)
+        await message.answer("Выберите партию для работы:", reply_markup=keyboard)
+
     elif job == 'OTK':
-        await otk_handlers.otk_start_menu(message, state)
+        # Показываем список партий для ОТК
+        parties = await db.get_all_parties()
+        if not parties:
+            await message.answer("Нет доступных партий")
+            return
+
+        from keyboards import get_parties_keyboard
+        keyboard = get_parties_keyboard(parties, user['job'], with_management=False)
+        await message.answer("Выберите партию для работы:", reply_markup=keyboard)
+
     elif job == 'Упаковка':
-        await upakovka_handlers.upakovka_start_menu(message, state)
+        # Показываем список партий для упаковки
+        parties = await db.get_all_parties()
+        if not parties:
+            await message.answer("Нет доступных партий")
+            return
+
+        from keyboards import get_parties_keyboard
+        keyboard = get_parties_keyboard(parties, user['job'], with_management=False)
+        await message.answer("Выберите партию для работы:", reply_markup=keyboard)
+
     else:
         await message.answer(f"Для должности '{job}' нет активных действий")
 
@@ -219,7 +335,7 @@ async def change_party_handler(message: types.Message):
 
 
 async def my_stats_handler(message: types.Message):
-    """Обработка кнопки 'Моя статистика'"""
+    """Обработка кнопки 'Мои данные'"""
     user = await db.get_user(message.from_user.id)
     if not user:
         await message.answer("Сначала пройдите регистрацию через /start")
@@ -498,25 +614,44 @@ async def change_party_callback(call: types.CallbackQuery, state: FSMContext):
     await call.answer()
 
 
-async def workers_stats_command(message: types.Message):
-    """Команда для просмотра статистики работников"""
-    user = await db.get_user(message.from_user.id)
-    if not user or not user_service.is_zakroi_sync(user['job']):
-        await message.answer("Эта команда доступна только закройщикам")
-        return
-
-    from handlers.worker_stats import full_workers_stats_callback
-
-    class FakeCallback:
-        def __init__(self, message):
-            self.message = message
-            self.from_user = message.from_user
-            self.data = "full_workers_stats"
-
-    fake_call = FakeCallback(message)
-    await full_workers_stats_callback(fake_call)
-
-
 async def edit_operations_handler(message: types.Message, state: FSMContext):
     """Обработка кнопки 'Изменить показания'"""
-    await edit_operations_start(message, state)
+    # Импортируем новую функцию
+    from handlers.edit_operations import edit_operations_start as edit_start_fixed
+    await edit_start_fixed(message, state)
+
+
+async def check_db_data(message: types.Message):
+    """Проверка данных в БД"""
+    user = await db.get_user(message.from_user.id)
+    if not user:
+        await message.answer("Вы не зарегистрированы")
+        return
+
+    # Получаем ВСЕ материалы где есть записи этого пользователя
+    async with db.pool.acquire() as conn:
+        # Для 4-х оператора
+        if user['job'] == '4-х':
+            materials = await conn.fetch(
+                "SELECT * FROM materials WHERE four_x ILIKE $1 AND four_x_count > 0",
+                f"%{user['name']}%"
+            )
+        elif user['job'] == 'Распаш':
+            materials = await conn.fetch(
+                "SELECT * FROM materials WHERE raspash ILIKE $1 AND raspash_count > 0",
+                f"%{user['name']}%"
+            )
+        # ... и так далее для других должностей
+
+    if not materials:
+        await message.answer(f"В БД нет записей для {user['name']} ({user['job']})")
+        return
+
+    response = f"📊 Найденные записи для {user['name']} ({user['job']}):\n\n"
+    for material in materials:
+        response += f"Партия ID: {material['party_id']}, Цвет: {material['color']}\n"
+        if user['job'] == '4-х':
+            response += f"  four_x: '{material['four_x']}', count: {material['four_x_count']}\n"
+        response += "\n"
+
+    await message.answer(response)

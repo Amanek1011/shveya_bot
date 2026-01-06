@@ -15,14 +15,15 @@ from handlers.common import (
     new_record_handler, start_work_handler,
     change_party_handler, my_stats_handler, all_parties_handler, change_machine_command, manage_users_handler,
     manage_users_command, manage_parties_handler, check_my_data, back_to_parties, add_material_callback,
-    continue_work_callback, change_party_callback, workers_stats_command, edit_operations_handler
+    continue_work_callback, change_party_callback, edit_operations_handler, check_db_data
 )
-from handlers.edit_operations import edit_party_selected, edit_color_selected, edit_operation_selected, \
-    cancel_edit_callback, edit_count_handler
+from handlers.edit_operations import (
+    edit_party_selected, edit_color_selected,
+)
 from handlers.registration import name_handler, job_selected, machine_number_handler
-from handlers.worker_stats import view_workers_callback, full_workers_stats_callback
+from handlers.worker_stats import view_workers_callback
 from handlers.zakroi import (
-    zakroi_start, zakroi_party_handler, zakroi_color_handler,
+    zakroi_party_handler, zakroi_color_handler,
     zakroi_quantity_handler,
     new_party_command, new_party_callback, zakroishchik_start
 )
@@ -84,6 +85,8 @@ from handlers.material_management import (
     edit_color_callback
 )
 
+from handlers.edit_operations import edit_count_handler
+
 # Импортируем состояния
 from states import *
 
@@ -110,7 +113,6 @@ dp.message.register(name_handler, RegistrationStates.waiting_for_name)
 dp.callback_query.register(job_selected, RegistrationStates.waiting_for_job)
 dp.message.register(machine_number_handler, RegistrationStates.waiting_for_machine_number)
 dp.callback_query.register(view_workers_callback, F.data.startswith("view_workers_"))
-dp.callback_query.register(full_workers_stats_callback, F.data == "full_workers_stats")
 dp.callback_query.register(continue_work_callback, F.data.startswith("continue_work_"))
 dp.callback_query.register(change_party_callback, F.data == "change_party")
 
@@ -126,12 +128,12 @@ dp.callback_query.register(add_material_callback, F.data.startswith("add_materia
 dp.message.register(new_record_handler, F.text == "Новая запись")
 dp.message.register(start_work_handler, F.text == "Начать работу")
 dp.message.register(change_party_handler, F.text == "Сменить партию")
-dp.message.register(my_stats_handler, F.text == "Моя статистика")
+dp.message.register(my_stats_handler, F.text == "Мои данные")
 dp.message.register(all_parties_handler, F.text == "Все партии")
 dp.message.register(manage_users_handler, F.text == "Управление пользователями")  # ДОБАВЛЯЕМ
 dp.message.register(manage_users_command, Command("управление_пользователями"))
 dp.message.register(manage_parties_handler, F.text == "Управление партиями")
-dp.message.register(workers_stats_command, Command("статистика_работников"))
+
 
 # Управление пользователями
 dp.callback_query.register(user_management_action, UserManagementStates.waiting_for_action)
@@ -173,10 +175,10 @@ dp.message.register(edit_operations_handler, F.text == "Изменить пок�
 
 # Обработчики редактирования показаний
 dp.callback_query.register(edit_party_selected, F.data.startswith("party_"), EditOperationsStates.waiting_for_party_selection)
-dp.callback_query.register(edit_color_selected, F.data.startswith("edit_color_"), EditOperationsStates.waiting_for_color_selection)
-dp.callback_query.register(edit_operation_selected, F.data.startswith("edit_op_"), EditOperationsStates.waiting_for_operation)
+dp.callback_query.register(edit_color_callback, F.data.startswith("edit_color_"))
+dp.callback_query.register(edit_color_selected, F.data.startswith("edit_count_"), EditOperationsStates.waiting_for_color_selection)
+dp.message.register(check_db_data, Command("проверка"))
 dp.message.register(edit_count_handler, EditOperationsStates.waiting_for_new_count)
-dp.callback_query.register(cancel_edit_callback, F.data == "cancel_edit")
 
 # 4-х
 dp.callback_query.register(fourx_start, F.data == "fourx")
@@ -254,6 +256,14 @@ async def main():
     print("🤖 Бот запускается...")
     print(f"🔑 Токен: {BOT_TOKEN[:10]}...")
     print(f"🗄️ База данных: {DB_HOST}:{DB_PORT}/{DB_NAME}")
+
+    # ПРОВЕРЯЕМ НАЛИЧИЕ ЗАКРОЙЩИКА В БАЗЕ (только для информации)
+    from config import ZAKROISHCHIK_ID
+    zakroi_user = await db.get_user(ZAKROISHCHIK_ID)
+    if zakroi_user:
+        print(f"✅ Закройщик в базе: {zakroi_user['name']}")
+    else:
+        print(f"ℹ️ Закройщик будет зарегистрирован при первом запуске /start")
 
     tables = await db.check_tables()
     print(f"📊 Найдены таблицы: {', '.join(tables)}")

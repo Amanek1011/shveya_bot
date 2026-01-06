@@ -3,7 +3,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from db import db
-from keyboards import get_cancel_keyboard, get_parties_keyboard, is_zakroi_sync
+from keyboards import  is_zakroi_sync
 from states import UserManagementStates
 
 
