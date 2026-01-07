@@ -72,22 +72,91 @@ async def zakroishchik_start(message: types.Message, state: FSMContext):
         reply_markup=get_main_menu_keyboard("Закрой")
     )
 
+
 async def zakroi_party_handler(message: types.Message, state: FSMContext):
+    """Обработка номера партии"""
     batch_number = message.text.strip()
 
-    # Добавляем партию если её нет
-    from service import PartyService
-    await PartyService.add_party_if_not_exists(batch_number)
+    # Проверяем валидность номера
+    if not batch_number:
+        await message.answer("Номер партии не может быть пустым. Введите снова:")
+        return
 
-    party = await db.get_party_by_number(batch_number)
-    await state.update_data(party_id=party['id'], batch_number=batch_number)
-    await state.set_state(ZakroiStates.waiting_for_color)
+    # Сохраняем номер партии и переходим к вводу дизайна
+    await state.update_data(batch_number=batch_number)
+    await state.set_state(ZakroiStates.waiting_for_design)
 
     await message.answer(
-        f"Партия №{batch_number}\n"
-        "Введите название цвета/материала (например: Грава, Бирюза):",
+        f"Номер партии: {batch_number}\n"
+        f"Теперь введите название дизайна (например: Nike, Adidas, Puma):",
         reply_markup=get_cancel_keyboard()
     )
+
+
+async def zakroi_design_handler(message: types.Message, state: FSMContext):
+    """Обработка названия дизайна"""
+    design = message.text.strip()
+    data = await state.get_data()
+    batch_number = data['batch_number']
+
+    try:
+        # Проверяем есть ли партия в БД
+        print(f"🔍 Проверяю партию №{batch_number} в БД...")
+        party = await db.get_party_by_number(batch_number)
+
+        if party:
+            print(f"✅ Партия найдена в БД: {party}")
+            print(f"🔍 Дизайн в БД: '{party.get('design')}'")
+        else:
+            print(f"❌ Партия не найдена в БД")
+
+        if not party:
+            # Партии нет - создаем с дизайном
+            success = await db.add_party(batch_number, design)
+
+            if not success:
+                print(f"❌ Не удалось создать партию")
+                await message.answer(f"❌ Не удалось создать партию №{batch_number}")
+                await state.clear()
+                return
+        else:
+            # Партия уже есть - обновляем дизайн
+            try:
+                async with db.pool.acquire() as conn:
+                    await conn.execute(
+                        "UPDATE parties SET design = $1 WHERE batch_number = $2",
+                        design, batch_number
+                    )
+            except Exception as e:
+                print(f"❌ Ошибка при обновлении дизайна: {e}")
+                import traceback
+                traceback.print_exc()
+
+        # Получаем обновленную партию
+        party = await db.get_party_by_number(batch_number)
+
+        if not party:
+            print(f"❌ Партия не найдена после обновления")
+            await message.answer("❌ Ошибка: партия не найдена после создания")
+            await state.clear()
+            return
+
+        await state.update_data(party_id=party['id'], design=design)
+        await state.set_state(ZakroiStates.waiting_for_color)
+        await message.answer(
+            f"✅ Партия создана/обновлена!\n"
+            f"Партия: №{batch_number}\n"
+            f"Дизайн: {design}\n\n"
+            f"Теперь введите название цвета/материала (например: Черный, Белый, Грава):",
+            reply_markup=get_cancel_keyboard()
+        )
+
+    except Exception as e:
+        print(f"❌ Критическая ошибка в zakroi_design_handler: {e}")
+        import traceback
+        traceback.print_exc()
+        await message.answer(f"Произошла ошибка: {e}")
+        await state.clear()
 
 
 async def zakroi_color_handler(message: types.Message, state: FSMContext):
@@ -142,6 +211,7 @@ async def zakroi_color_handler(message: types.Message, state: FSMContext):
             reply_markup=get_cancel_keyboard()
         )
 
+
 async def zakroi_quantity_handler(message: types.Message, state: FSMContext):
     try:
         quantity_line = int(message.text)
@@ -175,13 +245,13 @@ async def zakroi_quantity_handler(message: types.Message, state: FSMContext):
 
             if party:
                 from service import party_service
-                info = await party_service.format_party_info(party['id'], user_job)
+
+                info = await party_service.format_party_info_detailed(party['id'], user_job)
 
                 from_callback = data.get('from_callback', False)
 
                 if from_callback:
-                    # УБЕРИТЕ await - метод синхронный!
-                    keyboard = party_service.get_party_keyboard(  # БЕЗ await!
+                    keyboard = party_service.get_party_keyboard(
                         party['id'],
                         party['batch_number'],
                         user_job,

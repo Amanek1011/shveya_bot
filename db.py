@@ -112,25 +112,31 @@ class Database:
                 batch_number
             )
 
-    async def add_party(self, batch_number: str):
-        """Добавить новую партию"""
+    async def add_party(self, batch_number: str, design: str = None):
+        """Добавить новую партию с дизайном"""
         if not self.pool:
             await self.create_pool()
+
+        print(f"📝 Добавление партии в БД: №{batch_number}, дизайн='{design}'")
 
         async with self.pool.acquire() as conn:
             try:
                 await conn.execute(
                     """
-                    INSERT INTO parties (batch_number) 
-                    VALUES ($1)
+                    INSERT INTO parties (batch_number, design) 
+                    VALUES ($1, $2)
                     """,
-                    batch_number
+                    batch_number, design
                 )
+                print(f"✅ Партия добавлена успешно")
                 return True
-            except asyncpg.UniqueViolationError:
-                return False  # Партия уже существует
+            except asyncpg.UniqueViolationError as e:
+                print(f"⚠️ Партия уже существует: {e}")
+                return False
             except Exception as e:
-                print(f"Ошибка при добавлении партии: {e}")
+                print(f"❌ Ошибка при добавлении партии: {e}")
+                print(f"❌ Тип ошибки: {type(e)}")
+                print(f"❌ Детали ошибки: {e.__dict__ if hasattr(e, '__dict__') else 'нет деталей'}")
                 return False
 
     # === Методы для материалов (цветов) в партии ===
@@ -270,9 +276,6 @@ class Database:
 
         # Проверим что обновилось
         material = await self.get_material_by_id(material_id)
-        print(f"📝 Проверка после UPDATE:")
-        print(f"   four_x: '{material['four_x']}'")
-        print(f"   four_x_count: {material['four_x_count']}")
 
     async def update_raspash(self, material_id: int, raspash: str, raspash_count: int):
         """Обновить данные по распаш"""
@@ -396,23 +399,12 @@ class Database:
             await self.create_pool()
 
         async with self.pool.acquire() as conn:
-            # Таблица users
-            await conn.execute("""
-                CREATE TABLE IF NOT EXISTS users (
-                    id SERIAL PRIMARY KEY,
-                    tg_id BIGINT UNIQUE NOT NULL,
-                    name TEXT NOT NULL,
-                    job VARCHAR(50),
-                    machine_number VARCHAR(50),
-                    registered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-
-            # Таблица parties
+            # Таблица parties с полем design
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS parties (
                     id SERIAL PRIMARY KEY,
                     batch_number VARCHAR(50) UNIQUE NOT NULL,
+                    design VARCHAR(100),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -447,5 +439,36 @@ class Database:
 
             print("Таблицы созданы/проверены")
 
+    async def add_party_with_design(self, batch_number: str, design: str):
+        """Добавить партию с дизайном"""
+        if not self.pool:
+            await self.create_pool()
+
+        async with self.pool.acquire() as conn:
+            try:
+                await conn.execute(
+                    """
+                    INSERT INTO parties (batch_number, design) 
+                    VALUES ($1, $2)
+                    """,
+                    batch_number, design
+                )
+                return True
+            except asyncpg.UniqueViolationError:
+                return False
+            except Exception as e:
+                print(f"Ошибка при добавлении партии: {e}")
+                return False
+
+    async def get_user_by_name(self, name: str):
+        """Получить пользователя по имени"""
+        if not self.pool:
+            await self.create_pool()
+
+        async with self.pool.acquire() as conn:
+            return await conn.fetchrow(
+                "SELECT * FROM users WHERE name ILIKE $1",
+                f"%{name}%"
+            )
 
 db = Database()

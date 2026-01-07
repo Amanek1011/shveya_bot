@@ -25,7 +25,7 @@ from handlers.worker_stats import view_workers_callback
 from handlers.zakroi import (
     zakroi_party_handler, zakroi_color_handler,
     zakroi_quantity_handler,
-    new_party_command, new_party_callback, zakroishchik_start
+    new_party_command, new_party_callback, zakroishchik_start, zakroi_design_handler
 )
 
 from handlers.fourx import (
@@ -118,6 +118,7 @@ dp.callback_query.register(change_party_callback, F.data == "change_party")
 
 # Закрой
 dp.message.register(zakroi_party_handler, ZakroiStates.waiting_for_party_number)
+dp.message.register(zakroi_design_handler, ZakroiStates.waiting_for_design)
 dp.message.register(zakroi_color_handler, ZakroiStates.waiting_for_color)
 dp.message.register(zakroi_quantity_handler, ZakroiStates.waiting_for_quantity_line)
 dp.callback_query.register(back_to_parties, F.data == "back_to_parties")

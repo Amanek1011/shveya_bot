@@ -85,41 +85,35 @@ def get_cancel_keyboard():
 
 # Клавиатура выбора партии с функциями управления
 def get_parties_keyboard(parties, user_job=None, with_management=False):
-    """
-    with_management: если True, показывает кнопки управления (удалить) для каждой партии
-    """
     builder = InlineKeyboardBuilder()
 
-    # Нормализуем должность синхронно
-    normalized_job = normalize_job_sync(user_job) if user_job else None
-
     for party in parties:
-        if with_management and normalized_job == 'Закрой':
-            # Для закройщика в режиме управления показываем кнопки с удалением
+        # Добавляем дизайн к названию партии
+        design_text = f" ({party['design']})" if party.get('design') else ""
+
+        if with_management and normalize_job_sync(user_job) == 'Закрой':
             builder.button(
-                text=f"🗑️ Партия №{party['batch_number']}",
+                text=f"🗑️ Партия №{party['batch_number']}{design_text}",
                 callback_data=f"delete_party_{party['batch_number']}"
             )
         else:
-            # Обычный выбор партии
             builder.button(
-                text=f"Партия №{party['batch_number']}",
+                text=f"Партия №{party['batch_number']}{design_text}",
                 callback_data=f"party_{party['batch_number']}"
             )
 
-    # Показываем кнопку "Новая партия" только закройщикам
-    if normalized_job == 'Закрой':
+    if normalize_job_sync(user_job) == 'Закрой':
         builder.button(text="➕ Новая партия", callback_data="new_party")
 
+    builder.button(text="❌ Отмена", callback_data="cancel")
 
-    # Размещаем кнопки в зависимости от их количества
-    if normalized_job == 'Закрой':
+    if normalize_job_sync(user_job) == 'Закрой':
         if with_management:
-            builder.adjust(1, 2, 1)  # По 1 партии в ряду (с иконкой), затем 2 кнопки, затем отмена
+            builder.adjust(1, 2, 1)
         else:
-            builder.adjust(2, 2, 1, 1)  # 2 партии в ряду, затем 2, затем новая партия, затем отмена
+            builder.adjust(2, 2, 1, 1)
     else:
-        builder.adjust(2, 2, 1)  # 2 партии в ряду, затем 2, затем отмена
+        builder.adjust(2, 2, 1)
 
     return builder.as_markup()
 

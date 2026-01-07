@@ -9,8 +9,6 @@ from states import PartyManagementStates
 
 async def party_management_start(message: types.Message, state: FSMContext):
     """Начало управления партиями"""
-    print(f"🔍 Функция party_management_start вызвана")
-
     user = await db.get_user(message.from_user.id)
 
     if not user:
@@ -18,29 +16,13 @@ async def party_management_start(message: types.Message, state: FSMContext):
         await message.answer("Сначала пройдите регистрацию через /start")
         return
 
-    print(f"✅ Пользователь: {user['name']}")
-    print(f"✅ Должность из БД: '{user['job']}' (тип: {type(user['job'])})")
-
     # Детальная проверка
     normalized_job = normalize_job_sync(user['job'])
-    print(f"✅ Нормализованная должность: '{normalized_job}'")
-
     is_zakroi = is_zakroi_sync(user['job'])
-    print(f"✅ is_zakroi_sync('{user['job']}'): {is_zakroi}")
-
-    # Проверка на разные варианты
-    print(f"✅ Проверки:")
-    print(f"   user['job'] == 'Закрой': {user['job'] == 'Закрой'}")
-    print(f"   user['job'].lower() == 'закрой': {user['job'].lower() == 'закрой'}")
-    print(f"   'Закрой' in user['job']: {'Закрой' in user['job']}")
-    print(f"   'zakroi' in user['job'].lower(): {'zakroi' in user['job'].lower()}")
 
     if not is_zakroi:
-        print(f"❌ Доступ запрещен: пользователь не закройщик")
         await message.answer("Эта функция доступна только закройщикам")
         return
-
-    print(f"✅ Доступ разрешен, показываем меню управления партиями")
 
     await state.set_state(PartyManagementStates.waiting_for_action)
 

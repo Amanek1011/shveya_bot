@@ -60,124 +60,85 @@ class UserService:
 class PartyService:
     @staticmethod
     async def add_party_if_not_exists(batch_number: str):
-        """Добавить партию если её нет"""
+        """Добавить партию если её нет (без дизайна)"""
         party = await db.get_party_by_number(batch_number)
         if not party:
-            await db.add_party(batch_number)
+            await db.add_party(batch_number, None)  # Добавляем None для дизайна
             return True
         return False
 
     @staticmethod
-    async def format_party_info(party_id: int, user_job=None, show_detailed=False):
-        """Форматировать информацию о партии - простой вариант для закройщика"""
+    async def add_party_with_design(batch_number: str, design: str):
+        """Добавить партию с дизайном"""
+        party = await db.get_party_by_number(batch_number)
+        if not party:
+            # Добавляем новую партию с дизайном
+            success = await db.add_party(batch_number, design)
+            return success
+        else:
+            # Обновляем дизайн существующей партии
+            async with db.pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE parties SET design = $1 WHERE batch_number = $2",
+                    design, batch_number
+                )
+            return True
+
+    @staticmethod
+    async def format_party_info_detailed(party_id: int, user_job=None):
+        """Детальное форматирование информации о партии"""
+        party = await db.get_party_by_id(party_id)
         materials = await db.get_materials_by_party(party_id)
 
         if not materials:
-            return "В этой партии пока нет материалов"
+            design_text = f"({party.get('design')})" if party.get('design') else ""
+            return f"📦 Партия №{party['batch_number']}{design_text}\n\nВ этой партии пока нет материалов"
 
-        result = f"📦 Партия:\n\n"
+        # Заголовок с дизайном
+        design_text = f"({party.get('design')})" if party.get('design') else ""
+        result = f"📦 Партия №{party['batch_number']}{design_text}\n\n"
 
-        # Сортируем материалы по цвету
-        materials_sorted = sorted(materials, key=lambda x: x['color'])
-
-        # Пронумерованный список материалов
         material_number = 1
-        total_lines = 0
-        total_tshirts = 0
-
-        for material in materials_sorted:
+        for material in sorted(materials, key=lambda x: x['color']):
             lines = material['quantity_line'] or 0
             tshirts = material['tshirt_count'] or 0
 
-            result += f"{material_number}.  {material['color']} - {lines}л - {tshirts}шт:\n"
+            result += f"{material_number}. Цвет - {material['color']}\n"
+            result += f"       Закрой :  {lines}л - {tshirts}шт\n"
 
-            # Прогресс по операциям - ПРАВИЛЬНОЕ СРАВНЕНИЕ
-            operations = []
+            # Форматируем операции
+            ops = [
+                ("4-х", material.get('four_x'), material.get('four_x_count')),
+                ("Распаш", material.get('raspash'), material.get('raspash_count')),
+                ("Бейка", material.get('beika'), material.get('beika_count')),
+                ("Строчка", material.get('strochka'), material.get('strochka_count')),
+                ("Горло", material.get('gorlo'), material.get('gorlo_count')),
+                ("Утюг", material.get('ytyg'), material.get('ytyg_count')),
+                ("ОТК", material.get('otk'), material.get('otk_count')),
+                ("Упаковка", material.get('ypakovka'), material.get('ypakovka_count'))
+            ]
 
-            four_x_count = material.get('four_x_count') or 0
-            if four_x_count > 0 and material.get('four_x'):
-                operations.append(f"4-х: {four_x_count}шт")
+            for op_name, op_person, op_count in ops:
+                if op_person and op_count:
+                    # Для 4-х оператора добавляем номер машинки
+                    if op_name == '4-х':
+                        user = await db.get_user_by_name(op_person)
+                        machine = f"({user['machine_number']})" if user and user.get('machine_number') else ""
+                        result += f"       {op_name}({op_person}{machine}): {op_count}шт\n"
+                    else:
+                        result += f"       {op_name}({op_person}): {op_count}шт\n"
+                else:
+                    result += f"       {op_name}(): ---\n"
 
-            raspash_count = material.get('raspash_count') or 0
-            if raspash_count > 0 and material.get('raspash'):
-                operations.append(f"    Распаш: {raspash_count}шт ")
-
-            beika_count = material.get('beika_count') or 0
-            if beika_count > 0 and material.get('beika'):
-                operations.append(f"    Бейка: {beika_count}шт")
-
-            strochka_count = material.get('strochka_count') or 0
-            if strochka_count > 0 and material.get('strochka'):
-                operations.append(f"    Строчка: {strochka_count}шт")
-
-            gorlo_count = material.get('gorlo_count') or 0
-            if gorlo_count > 0 and material.get('gorlo'):
-                operations.append(f"    Горло: {gorlo_count}шт")
-
-            ytyg_count = material.get('ytyg_count') or 0
-            if ytyg_count > 0 and material.get('ytyg'):
-                operations.append(f"    Утюг: {ytyg_count}шт")
-
-            otk_count = material.get('otk_count') or 0
-            if otk_count > 0 and material.get('otk'):
-                operations.append(f"    ОТК: {otk_count}шт")
-
-            ypakovka_count = material.get('ypakovka_count') or 0
-            if ypakovka_count > 0 and material.get('ypakovka'):
-                operations.append(f"    Упаковка: {ypakovka_count}шт")
-
-            # result += f"   ID: {material['id']}\n\n"
-            if operations:
-                result += f"    {' \n'.join(operations)}\n\n"
-
-            total_lines += lines
-            total_tshirts += tshirts
+            result += "\n"
             material_number += 1
 
-        # Добавляем общую статистику (только для закройщика)
-        from keyboards import is_zakroi_sync
-        if user_job and is_zakroi_sync(user_job):
-            result += "=" * 30 + "\n"
-            result += f"📈 ОБЩАЯ СТАТИСТИКА:\n"
-            result += f"• Всего материалов: {len(materials)}\n"
-            result += f"• Всего линий: {total_lines}\n"
-            result += f"• Всего футболок: {total_tshirts}\n"
-
-            # Расчет выполнения
-            completed = 0
-
-            # Подсчет выполненных работ по операциям
-            completed_operations = {
-                'four_x_count': 0,
-                'raspash_count': 0,
-                'beika_count': 0,
-                'strochka_count': 0,
-                'gorlo_count': 0,
-                'ytyg_count': 0,
-                'otk_count': 0,
-                'ypakovka_count': 0
-            }
-
-            operations_names = {
-                'four_x_count': '4-х',
-                'raspash_count': 'Распаш',
-                'beika_count': 'Бейка',
-                'strochka_count': 'Строчка',
-                'gorlo_count': 'Горло',
-                'ytyg_count': 'Утюг',
-                'otk_count': 'ОТК',
-                'ypakovka_count': 'Упаковка'
-            }
-
-            for material in materials:
-                for operation in completed_operations.keys():
-                    count = material.get(operation) or 0
-                    completed_operations[operation] += count
-                    completed += count
-
-            result += f"• Выполнено футболок: {completed}шт\n"
-
         return result
+
+    @staticmethod
+    async def format_party_info(party_id: int, user_job=None):
+        """Старый метод для обратной совместимости"""
+        return await PartyService.format_party_info_detailed(party_id, user_job)
 
     @staticmethod
     async def format_party_simple(party_id: int, user_job=None):

@@ -125,18 +125,17 @@ async def view_workers_callback(call: types.CallbackQuery):
         text += "Пока никто не начал работу.\n"
     else:
         for worker, jobs in sorted(workers_stats.items()):
-            text += f"{worker}:\n"
-
             for job_name, details in jobs.items():
                 total_for_job = sum(item['count'] for item in details)
-                text += f"   {job_name}: {total_for_job}шт\n"
+                text += f"{worker}({job_name}):\n"
+                text += f"    Всего : {total_for_job}шт\n"
 
                 # Детали по цветам
                 for item in details:
                     text += f"      • {item['color']}: {item['count']}шт\n"
 
                 text += "\n"
-            text += "\n"
+
 
     builder = InlineKeyboardBuilder()
     builder.button(text="◀️ Назад к партии", callback_data=f"party_back_{party_id}")

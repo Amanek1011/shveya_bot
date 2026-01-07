@@ -14,6 +14,7 @@ class UserManagementStates(StatesGroup):
 
 class ZakroiStates(StatesGroup):
     waiting_for_party_number = State()
+    waiting_for_design = State()
     waiting_for_color = State()
     waiting_for_quantity_line = State()
 

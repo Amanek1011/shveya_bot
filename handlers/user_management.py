@@ -18,10 +18,6 @@ async def user_management_start(message: types.Message, state: FSMContext):
     # Используем синхронную проверку из keyboards.py
     is_zakroi = is_zakroi_sync(user['job'])
 
-    print(f"🔍 Проверка доступа для управления пользователями:")
-    print(f"   Пользователь: {user['name']}")
-    print(f"   Должность: '{user['job']}'")
-    print(f"   is_zakroi_sync: {is_zakroi}")
 
     if not is_zakroi:
         await message.answer("Эта функция доступна только закройщикам")

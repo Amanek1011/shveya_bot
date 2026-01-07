@@ -165,17 +165,17 @@ async def party_selected_from_menu(call: types.CallbackQuery):
 
     # Разный текст для закройщика и оператора
     if user_service.is_zakroi_sync(user_job):
-        # Для закройщика - полная информация
-        info = await party_service.format_party_info(party['id'], user_job)
+        # Для закройщика - детальная информация
+        info = await party_service.format_party_info_detailed(party['id'], user_job)
         await call.message.answer(
-            f"✅ Выбрана партия №{batch_number}\n\n{info}",
+            f"✅ Выбрана партия:\n\n{info}",
             reply_markup=party_service.get_party_keyboard(party['id'], batch_number, user_job)
         )
     else:
         # Для оператора - упрощенный вид
         info = await party_service.format_party_simple(party['id'], user_job)
         await call.message.answer(
-            f"✅ Выбрана партия №{batch_number}\n\n{info}",
+            f"✅ Выбрана партия:\n\n{info}",
             reply_markup=party_service.get_party_keyboard(party['id'], batch_number, user_job)
         )
 
